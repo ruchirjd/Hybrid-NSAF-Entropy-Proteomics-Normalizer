@@ -1,0 +1,158 @@
+import pandas as pd
+import numpy as np
+from scipy.stats import entropy
+
+def calculate_shannon_entropy(data):
+    """
+    Calculate Shannon entropy for a sample
+    """
+    # Convert counts to probabilities
+    total = np.sum(data)
+    if total == 0:
+        return 0
+    probabilities = data / total
+    # Remove zero probabilities to avoid log(0)
+    probabilities = probabilities[probabilities > 0]
+    return entropy(probabilities, base=2)
+
+def calculate_hybrid_normalization(df, spec_columns, length_column='Length'):
+    """
+    Hybrid normalization combining NSAF and entropy-based methods:
+    1. NSAF normalization (spectral counts normalized by protein length)
+    2. Sample complexity adjustment using Shannon entropy
+    3. Final normalization with complexity weights
+    """
+    result_df = df.copy()
+    
+    # Step 1: NSAF Calculation
+    nsaf_cols = []
+    for spec_col in spec_columns:
+        # Calculate SpC/L for each protein
+        spc_l_col = f"{spec_col}_SpC_L"
+        result_df[spc_l_col] = df[spec_col] / df[length_column]
+        
+        # Calculate sum of SpC/L for normalization
+        sum_spc_l = result_df[spc_l_col].sum()
+        
+        # Calculate NSAF
+        nsaf_col = f"{spec_col}_NSAF"
+        if sum_spc_l > 0:
+            result_df[nsaf_col] = result_df[spc_l_col] / sum_spc_l
+        else:
+            result_df[nsaf_col] = 0
+        nsaf_cols.append(nsaf_col)
+        
+        # Clean up intermediate calculation
+        result_df.drop(columns=[spc_l_col], inplace=True)
+    
+    # Step 2: Calculate Shannon entropy for each sample using NSAF values
+    entropy_values = {}
+    for nsaf_col in nsaf_cols:
+        entropy_values[nsaf_col] = calculate_shannon_entropy(result_df[nsaf_col].values)
+    
+    # Calculate entropy-based weights
+    mean_entropy = np.mean(list(entropy_values.values()))
+    entropy_weights = {col: h/mean_entropy for col, h in entropy_values.items()}
+    
+    # Step 3: Apply entropy-based adjustment to NSAF values
+    adjusted_cols = []
+    for spec_col, nsaf_col in zip(spec_columns, nsaf_cols):
+        adj_col = f"{spec_col}_hybrid_normalized"
+        result_df[adj_col] = result_df[nsaf_col] * entropy_weights[nsaf_col]
+        adjusted_cols.append(adj_col)
+    
+    # Calculate final average across replicates
+    result_df['average_hybrid_normalized'] = result_df[adjusted_cols].mean(axis=1)
+    
+    # Add quality control metrics
+    for spec_col, nsaf_col in zip(spec_columns, nsaf_cols):
+        # Store entropy and complexity weights
+        result_df[f"{spec_col}_entropy"] = entropy_values[nsaf_col]
+        result_df[f"{spec_col}_complexity_weight"] = entropy_weights[nsaf_col]
+        
+        # Calculate coefficient of variation (CV) for replicates
+        if len(spec_columns) > 1:
+            cv = result_df[adjusted_cols].std(axis=1) / result_df[adjusted_cols].mean(axis=1)
+            result_df['coefficient_of_variation'] = cv
+    
+    # Organize columns in logical order
+    original_cols = df.columns.tolist()
+    final_col_order = (
+        original_cols +  # Original columns
+        nsaf_cols +     # NSAF values
+        adjusted_cols + # Hybrid normalized values
+        ['average_hybrid_normalized']  # Average across replicates
+    )
+    
+    # Add CV if we have replicates
+    if len(spec_columns) > 1:
+        final_col_order.append('coefficient_of_variation')
+    
+    # Add metadata columns
+    final_col_order.extend([
+        f"{spec_col}_entropy" for spec_col in spec_columns
+    ] + [
+        f"{spec_col}_complexity_weight" for spec_col in spec_columns
+    ])
+    
+    result_df = result_df[final_col_order]
+    return result_df
+
+def main():
+    try:
+        # Read input CSV file
+        input_file = input("Enter the input CSV file path: ")
+        df = pd.read_csv(input_file)
+        
+        # Verify required columns
+        spec_columns = [col for col in df.columns if col.startswith('Spec')]
+        if len(spec_columns) == 0:
+            print("Error: No columns starting with 'Spec' found in the CSV file.")
+            return
+            
+        if 'Length' not in df.columns:
+            print("Error: 'Length' column not found in the CSV file.")
+            return
+        
+        print(f"Found spectral count columns: {spec_columns}")
+        
+        # Perform hybrid normalization
+        normalized_df = calculate_hybrid_normalization(df, spec_columns)
+        
+        # Create output filename
+        output_file = input_file.rsplit('.', 1)[0] + '_hybrid_normalized.csv'
+        
+        # Save results
+        normalized_df.to_csv(output_file, index=False)
+        
+        # Print summary statistics and column information
+        print("\nNormalization Summary:")
+        print("-" * 50)
+        for spec_col in spec_columns:
+            print(f"\nSample: {spec_col}")
+            print(f"Shannon Entropy: {normalized_df[f'{spec_col}_entropy'].iloc[0]:.4f}")
+            print(f"Complexity Weight: {normalized_df[f'{spec_col}_complexity_weight'].iloc[0]:.4f}")
+        
+        if len(spec_columns) > 1:
+            cv_mean = normalized_df['coefficient_of_variation'].mean()
+            print(f"\nMean Coefficient of Variation: {cv_mean:.4f}")
+        
+        print("\nOutput File Structure:")
+        print("-" * 50)
+        print("1. Original columns from input file")
+        print("2. NSAF values (*_NSAF)")
+        print("3. Hybrid normalized values (*_hybrid_normalized)")
+        print("4. Average hybrid normalized value")
+        if len(spec_columns) > 1:
+            print("5. Coefficient of Variation across replicates")
+        print("6. Sample entropy values (*_entropy)")
+        print("7. Sample complexity weights (*_complexity_weight)")
+        
+        print(f"\nResults saved to: {output_file}")
+        
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        print("Please check your input file and try again.")
+
+if __name__ == "__main__":
+    main()
