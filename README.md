@@ -82,7 +82,7 @@ If you use this tool in your research, please cite:
 [Citation information to be added]
 
 ## License
-[License information to be added]
+Added in LICENSE.md
 
 ## Contact
 [Contact information to be added]
