@@ -9,12 +9,12 @@ This project (\"Hybrid NSAF-Entropy Proteomics Normalizer\") is dual-licensed:
 
 - **Commercial use**:  
   Commercial usage, integration into commercial products, or resale requires obtaining a commercial license.  
-  **To obtain a commercial license, please contact [your-email@example.com].**
+  **To obtain a commercial license, please contact [mishraruchir@ufl.edu].**
 
 ### How to Choose Your License:
 
 - **Non-commercial or educational users**: Follow the [non-commercial license terms](LICENSE_NONCOMMERCIAL.md).
-- **Commercial users**: Please reach out directly at [your-email@example.com] to arrange commercial licensing.
+- **Commercial users**: Please reach out directly at [mishraruchir@ufl.edu] to arrange commercial licensing.
 
 ### Disclaimer of Liability:
 
